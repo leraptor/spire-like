@@ -848,7 +848,8 @@ class CombatScene extends Phaser.Scene {
         if (damages.length === 0) { onDone(); return; }
         const startX = (attacker as any).baseX;
         const isPlayer = attacker === this.playerSprite;
-        const approachX = startX + (150 * direction);
+        const approachDist = isPlayer ? 150 : 350;
+        const approachX = startX + (approachDist * direction);
 
         // Pick attack animation based on hit count
         let atkAnimKey = 'hero-atk1';
