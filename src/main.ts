@@ -189,6 +189,7 @@ class CardView extends Phaser.GameObjects.Container {
 
         this.on('pointerover', () => {
             if (!(this as any).isDragging) {
+                this.scene.sound.play('sfx-ui-hover', { volume: 0.4, rate: 1.0 + (Math.random() * 0.2 - 0.1) });
                 this.scene.tweens.add({
                     targets: this,
                     scaleX: 1.4, scaleY: 1.4,
@@ -270,6 +271,33 @@ class BootScene extends Phaser.Scene {
         this.load.spritesheet('hero_run', 'assets/hero_run.png', { frameWidth: 52, frameHeight: 48 });
         this.load.spritesheet('hit_fx_01', 'assets/hit_fx_01.png', { frameWidth: 125, frameHeight: 87 });
         this.load.spritesheet('hit_fx_02', 'assets/hit_fx_02.png', { frameWidth: 125, frameHeight: 87 });
+
+        this.load.audio('sfx_slash', 'assets/audio/slash.ogg');
+        this.load.audio('sfx_slash2', 'assets/audio/slash2.ogg');
+        this.load.audio('sfx_hit_heavy', 'assets/audio/hit_heavy.ogg');
+        this.load.audio('sfx_hit_heavy2', 'assets/audio/hit_heavy2.ogg');
+        this.load.audio('sfx_block', 'assets/audio/block.ogg');
+        this.load.audio('sfx_block2', 'assets/audio/block2.ogg');
+        this.load.audio('sfx_slam', 'assets/audio/slam.ogg');
+        this.load.audio('sfx_card_draw', 'assets/audio/card_draw.ogg');
+        this.load.audio('sfx_card_draw2', 'assets/audio/card_draw2.ogg');
+        this.load.audio('sfx_card_play', 'assets/audio/card_play.ogg');
+        this.load.audio('sfx_hover', 'assets/audio/hover.ogg');
+        this.load.audio('sfx_button', 'assets/audio/button.ogg');
+        this.load.audio('sfx_turn_start', 'assets/audio/turn_start.ogg');
+        this.load.audio('sfx_victory', 'assets/audio/victory.ogg');
+        this.load.audio('sfx_defeat', 'assets/audio/defeat.ogg');
+        this.load.audio('sfx_whoosh', 'assets/audio/whoosh.ogg');
+        this.load.audio('sfx_draw_weapon', 'assets/audio/draw_weapon.ogg');
+
+        // Audio
+        this.load.audio('sfx-card-draw', 'audio/card-draw.wav');
+        this.load.audio('sfx-card-play', 'audio/card-play.wav');
+        this.load.audio('sfx-hit', 'audio/hit.wav');
+        this.load.audio('sfx-block', 'audio/block.wav');
+        this.load.audio('sfx-ui-hover', 'audio/ui-hover.wav');
+        this.load.audio('sfx-ui-click', 'audio/ui-click.wav');
+        this.load.audio('bgm-dungeon', 'audio/bgm-dungeon.ogg');
     }
 
     create() {
@@ -340,6 +368,14 @@ class CombatScene extends Phaser.Scene {
 
     constructor() { super('CombatScene'); }
 
+    playSfx(key: string, volume = 0.5) {
+        this.sound.play(key, { volume });
+    }
+
+    playRandomSfx(keys: string[], volume = 0.5) {
+        this.playSfx(keys[Math.floor(Math.random() * keys.length)]!, volume);
+    }
+
     create() {
         this.state = new CombatState();
         this.state.onStateChanged = () => this.updateUI();
@@ -378,6 +414,16 @@ class CombatScene extends Phaser.Scene {
         topBar.lineStyle(2, 0x74b9ff, 1);
         topBar.strokeRect(0, 0, 1280, 45);
         this.topBarText = this.add.text(20, 10, '', { fontSize: '22px', color: '#fff', fontStyle: 'bold' });
+        
+        const bgm = this.sound.add('bgm-dungeon', { loop: true, volume: 0.3 });
+        bgm.play();
+
+        const muteBtn = this.add.text(1150, 10, '🔊', { fontSize: '22px', color: '#fff' }).setInteractive({ useHandCursor: true });
+        muteBtn.on('pointerdown', () => {
+            bgm.mute = !bgm.mute;
+            muteBtn.setText(bgm.mute ? '🔇' : '🔊');
+        });
+
         this.add.text(1200, 10, '⚙️ 🗺️', { fontSize: '22px', color: '#fff' });
 
         this.playerSprite = this.add.sprite(300, 510, 'hero_idle').setOrigin(0.5, 1).setScale(4).setInteractive();
@@ -419,8 +465,8 @@ class CombatScene extends Phaser.Scene {
             if (this.state.currentPhase !== TurnPhase.PLAYER_ACTION) return;
             gameObject.trailEmitter.setPosition(pointer.x, pointer.y);
 
-            // Targeting arrow for attack cards
-            if (gameObject.cardData.target === TargetType.SINGLE_ENEMY && dragY < 550) {
+            // Targeting arrow for cards that target enemies
+            if ((gameObject.cardData.target === TargetType.SINGLE_ENEMY || gameObject.cardData.target === TargetType.ALL_ENEMIES) && dragY < 550) {
                 gameObject.x = (gameObject as any).baseX;
                 gameObject.y = (gameObject as any).baseY;
                 gameObject.rotation = (gameObject as any).baseRotation;
@@ -580,7 +626,9 @@ class CombatScene extends Phaser.Scene {
         this.endTurnBtn.setInteractive({ useHandCursor: true });
 
         this.endTurnBtn.on('pointerdown', () => {
+            this.sound.play('sfx-ui-click', { volume: 0.6 });
             if (this.state.currentPhase === TurnPhase.PLAYER_ACTION) {
+                this.playSfx('sfx_button', 0.4);
                 this.state.endPlayerTurn();
                 this.showBanner('ENEMY TURN', '#ff7675');
 
@@ -620,6 +668,7 @@ class CombatScene extends Phaser.Scene {
 
     startPlayerTurnAnim() {
         if (this.state.currentPhase === TurnPhase.GAME_OVER) return;
+        this.playSfx('sfx_turn_start', 0.4);
         this.state.startPlayerTurn();
         this.showBanner('PLAYER TURN', '#74b9ff');
     }
@@ -683,6 +732,7 @@ class CombatScene extends Phaser.Scene {
             const msg = playerWon ? 'VICTORY' : 'YOU DIED';
             const color = playerWon ? '#ffd700' : '#ff7675';
 
+            this.playSfx(playerWon ? 'sfx_victory' : 'sfx_defeat', 0.7);
             if (playerWon) {
                 this.enemySprite.play('droid-death');
                 this.tweens.add({ targets: this.enemySprite, alpha: 0, duration: 800, delay: 400 });
@@ -733,6 +783,7 @@ class CombatScene extends Phaser.Scene {
                 cardView.setScale(0.1);
                 cardView.setAlpha(0);
 
+                this.time.delayedCall(i * 120, () => this.playRandomSfx(['sfx_card_draw', 'sfx_card_draw2'], 0.3));
                 this.tweens.add({
                     targets: cardView,
                     x: targetX, y: targetY,
@@ -767,6 +818,7 @@ class CombatScene extends Phaser.Scene {
     playCardAnim(cardView: CardView, targetSprite: Phaser.GameObjects.Sprite | undefined, damages: number[]) {
         (cardView as any).isPlayed = true;
         this.handContainer.bringToTop(cardView);
+        this.playSfx('sfx_card_play', 0.5);
 
         this.tweens.add({
             targets: cardView,
@@ -781,8 +833,10 @@ class CombatScene extends Phaser.Scene {
                 this.spawnParticles(640, 360, cardView.glowColor, 30);
 
                 if (cardView.cardData.type === CardType.ATTACK && targetSprite) {
+                    this.sound.play('sfx-hit', { volume: 0.7 });
                     this.execAttacks(this.playerSprite, targetSprite, 1, damages, () => this.finishCardDiscard(cardView));
                 } else {
+                    if (cardView.cardData.effect.block) this.sound.play('sfx-block', { volume: 0.6 });
                     let txt = '';
                     if (cardView.cardData.effect.block) txt += `🛡️+${cardView.cardData.effect.block} `;
                     if (cardView.cardData.effect.strength) txt += `💪+${cardView.cardData.effect.strength} `;
@@ -858,6 +912,7 @@ class CombatScene extends Phaser.Scene {
         if (damages.length >= 3) { atkAnimKey = 'hero-atk3'; atkTexture = 'hero_atk3'; }
 
         // Run toward the target
+        this.playSfx('sfx_whoosh', 0.3);
         if (!isPlayer) attacker.play('droid-run');
         this.tweens.add({
             targets: attacker,
@@ -866,6 +921,7 @@ class CombatScene extends Phaser.Scene {
             onComplete: () => {
                 // Spawn an overlay sprite for the attack animation
                 let actionSprite: Phaser.GameObjects.Sprite | null = null;
+                this.playRandomSfx(['sfx_slash', 'sfx_slash2'], 0.5);
                 if (isPlayer) {
                     attacker.setVisible(false);
                     actionSprite = this.add.sprite(approachX, attacker.y, atkTexture)
@@ -873,6 +929,7 @@ class CombatScene extends Phaser.Scene {
                         .setDepth(attacker.depth + 1);
                     actionSprite.play(atkAnimKey);
                 } else {
+                    this.playSfx('sfx_draw_weapon', 0.4);
                     attacker.play(Math.random() < 0.5 ? 'droid-attack1' : 'droid-attack2');
                 }
 
@@ -932,6 +989,7 @@ class CombatScene extends Phaser.Scene {
 
         // Hit lands mid-animation
         this.time.delayedCall(400, () => {
+            this.playSfx('sfx_slam', 0.8);
             this.cameras.main.shake(250, 0.03);
             this.animateHit(this.playerSprite, damage);
             this.spawnHitFx(this.playerSprite.x, this.playerSprite.y - 80);
@@ -948,6 +1006,7 @@ class CombatScene extends Phaser.Scene {
 
     animateHit(target: Phaser.GameObjects.Sprite, damage: number) {
         this.cameras.main.shake(120, 0.012);
+        this.playRandomSfx(['sfx_hit_heavy', 'sfx_hit_heavy2'], 0.6);
         target.setTintFill(0xffffff);
         this.time.delayedCall(50, () => target.setTint(0xff4444));
         this.time.delayedCall(150, () => {
@@ -979,6 +1038,7 @@ class CombatScene extends Phaser.Scene {
     }
 
     animateBuff(target: Phaser.GameObjects.Sprite, text: string, onComplete: () => void) {
+        this.playRandomSfx(['sfx_block', 'sfx_block2'], 0.4);
         target.setTint(0x74b9ff);
         this.time.delayedCall(150, () => target.clearTint());
 
