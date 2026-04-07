@@ -419,10 +419,13 @@ class CombatScene extends Phaser.Scene {
         topBar.strokeRect(0, 0, 1280, 45);
         this.topBarText = this.add.text(20, 10, '', { fontSize: '22px', color: '#fff', fontStyle: 'bold' });
         
+        const bgm = this.sound.add('bgm-dungeon', { loop: true, volume: 0.3 });
+        bgm.play();
+
         const muteBtn = this.add.text(1150, 10, '🔊', { fontSize: '22px', color: '#fff' }).setInteractive({ useHandCursor: true });
         muteBtn.on('pointerdown', () => {
-            this.sound.mute = !this.sound.mute;
-            muteBtn.setText(this.sound.mute ? '🔇' : '🔊');
+            bgm.mute = !bgm.mute;
+            muteBtn.setText(bgm.mute ? '🔇' : '🔊');
         });
 
         this.add.text(1200, 10, '⚙️ 🗺️', { fontSize: '22px', color: '#fff' });
