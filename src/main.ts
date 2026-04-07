@@ -448,6 +448,13 @@ class CombatScene extends Phaser.Scene {
         this.setupDragHandlers();
         this.state.startCombat();
         this.showBanner('PLAYER TURN', '#74b9ff');
+
+        // Fullscreen on first tap (mobile)
+        if (this.sys.game.device.os.android || this.sys.game.device.os.iOS) {
+            this.input.once('pointerdown', () => {
+                this.scale.startFullscreen();
+            });
+        }
     }
 
     setupDragHandlers() {
@@ -1119,7 +1126,11 @@ const config: Phaser.Types.Core.GameConfig = {
     scene: [BootScene, CombatScene],
     scale: {
         mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        fullscreenTarget: 'game-container'
+    },
+    input: {
+        activePointers: 2
     },
     physics: {
         default: 'arcade',
