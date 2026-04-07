@@ -189,7 +189,7 @@ class CardView extends Phaser.GameObjects.Container {
 
         this.on('pointerover', () => {
             if (!(this as any).isDragging) {
-                this.scene.sound.play('sfx-ui-hover', { volume: 0.4, rate: 1.0 + (Math.random() * 0.2 - 0.1) });
+                this.scene.sound.play('sfx_hover', { volume: 0.3 });
                 this.scene.tweens.add({
                     targets: this,
                     scaleX: 1.4, scaleY: 1.4,
@@ -294,14 +294,6 @@ class BootScene extends Phaser.Scene {
         this.load.audio('sfx_whoosh', 'assets/audio/whoosh.ogg');
         this.load.audio('sfx_draw_weapon', 'assets/audio/draw_weapon.ogg');
 
-        // Audio
-        this.load.audio('sfx-card-draw', 'audio/card-draw.wav');
-        this.load.audio('sfx-card-play', 'audio/card-play.wav');
-        this.load.audio('sfx-hit', 'audio/hit.wav');
-        this.load.audio('sfx-block', 'audio/block.wav');
-        this.load.audio('sfx-ui-hover', 'audio/ui-hover.wav');
-        this.load.audio('sfx-ui-click', 'audio/ui-click.wav');
-        this.load.audio('bgm-dungeon', 'audio/bgm-dungeon.ogg');
     }
 
     create() {
