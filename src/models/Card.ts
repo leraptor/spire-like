@@ -68,7 +68,7 @@ export const STARTER_CARDS: Record<string, Card> = {
         cost: 3,
         type: CardType.POWER,
         target: TargetType.SELF,
-        description: 'Gain 3 Strength.\nExhaust.',
+        description: 'Gain 3 Strength.',
         effect: { strength: 3 },
         exhaust: true
     },
@@ -78,7 +78,7 @@ export const STARTER_CARDS: Record<string, Card> = {
         cost: 2,
         type: CardType.SKILL,
         target: TargetType.ALL_ENEMIES,
-        description: 'Apply 2 Vulnerable\n& 2 Weak.\nExhaust.',
+        description: 'Apply 2 Vulnerable\n& 2 Weak.',
         effect: { vulnerable: 2, weak: 2 },
         exhaust: true
     },

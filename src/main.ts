@@ -128,7 +128,7 @@ class CardView extends Phaser.GameObjects.Container {
         this.bgGraphic.strokeRoundedRect(-80, -120, 160, 240, 12);
         this.add(this.bgGraphic);
 
-        // Card Art Image
+        // Card Art
         const artKey = this.getArtKey(card);
         const art = scene.add.image(0, -20, artKey).setDisplaySize(130, 90);
         this.add(art);
@@ -153,15 +153,15 @@ class CardView extends Phaser.GameObjects.Container {
         this.add(titleText);
 
         // Type
-        const typeText = scene.add.text(0, 45, card.type, {
-            fontSize: '14px', fontStyle: 'italic', color: '#b2bec3'
+        const typeText = scene.add.text(0, 38, card.type, {
+            fontSize: '12px', fontStyle: 'italic', color: '#b2bec3'
         }).setOrigin(0.5);
         this.add(typeText);
 
         // Description
-        const descText = scene.add.text(0, 75, card.description, {
-            fontSize: '14px', color: '#dfe6e9', align: 'center', wordWrap: { width: 140 }, lineSpacing: 2
-        }).setOrigin(0.5);
+        const descText = scene.add.text(0, 70, card.description, {
+            fontSize: '13px', color: '#dfe6e9', align: 'center', wordWrap: { width: 140 }, lineSpacing: 1
+        }).setOrigin(0.5, 0.5);
         this.add(descText);
 
         // Exhaust indicator
@@ -225,6 +225,9 @@ class CardView extends Phaser.GameObjects.Container {
     getArtKey(card: Card): string {
         if (card.title === 'Strike') return 'card_strike';
         if (card.title === 'Defend') return 'card_defend';
+        if (card.title === 'Shockwave') return 'card_ripAndTear';
+        if (card.title === 'Empower') return 'card_ripAndTear';
+        if (card.title === 'Flow') return 'card_defend';
         return 'card_ripAndTear';
     }
 
@@ -272,8 +275,9 @@ class BootScene extends Phaser.Scene {
         this.load.spritesheet('hit_fx_01', 'assets/hit_fx_01.png', { frameWidth: 125, frameHeight: 87 });
         this.load.spritesheet('hit_fx_02', 'assets/hit_fx_02.png', { frameWidth: 125, frameHeight: 87 });
 
-        this.load.audio('sfx_slash', 'assets/audio/slash.ogg');
-        this.load.audio('sfx_slash2', 'assets/audio/slash2.ogg');
+        this.load.audio('sfx_slash', 'assets/audio/slash.wav');
+        this.load.audio('sfx_slash2', 'assets/audio/slash2.wav');
+        this.load.audio('sfx_slash3', 'assets/audio/slash3.wav');
         this.load.audio('sfx_hit_heavy', 'assets/audio/hit_heavy.ogg');
         this.load.audio('sfx_hit_heavy2', 'assets/audio/hit_heavy2.ogg');
         this.load.audio('sfx_block', 'assets/audio/block.ogg');
@@ -902,7 +906,7 @@ class CombatScene extends Phaser.Scene {
         if (damages.length === 0) { onDone(); return; }
         const startX = (attacker as any).baseX;
         const isPlayer = attacker === this.playerSprite;
-        const approachDist = isPlayer ? 150 : 350;
+        const approachDist = isPlayer ? 350 : 350;
         const approachX = startX + (approachDist * direction);
 
         // Pick attack animation based on hit count
@@ -921,7 +925,7 @@ class CombatScene extends Phaser.Scene {
             onComplete: () => {
                 // Spawn an overlay sprite for the attack animation
                 let actionSprite: Phaser.GameObjects.Sprite | null = null;
-                this.playRandomSfx(['sfx_slash', 'sfx_slash2'], 0.5);
+                this.playRandomSfx(['sfx_slash', 'sfx_slash2', 'sfx_slash3'], 0.5);
                 if (isPlayer) {
                     attacker.setVisible(false);
                     actionSprite = this.add.sprite(approachX, attacker.y, atkTexture)
