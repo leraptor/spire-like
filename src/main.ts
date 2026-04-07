@@ -411,6 +411,12 @@ class CombatScene extends Phaser.Scene {
         topBar.strokeRect(0, 0, 1280, 45);
         this.topBarText = this.add.text(20, 10, '', { fontSize: '22px', color: '#fff', fontStyle: 'bold' });
         
+        const muteBtn = this.add.text(1150, 10, '🔊', { fontSize: '22px', color: '#fff' }).setInteractive({ useHandCursor: true });
+        muteBtn.on('pointerdown', () => {
+            this.sound.mute = !this.sound.mute;
+            muteBtn.setText(this.sound.mute ? '🔇' : '🔊');
+        });
+
         this.add.text(1200, 10, '⚙️ 🗺️', { fontSize: '22px', color: '#fff' });
 
         this.playerSprite = this.add.sprite(300, 510, 'hero_idle').setOrigin(0.5, 1).setScale(4).setInteractive();
