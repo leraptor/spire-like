@@ -20,7 +20,7 @@ export class CombatState {
     deck: Deck;
     currentPhase: TurnPhase;
 
-    nextEnemyAction!: { type: 'Attack' | 'Defend' | 'Debuff', damage: number };
+    nextEnemyAction!: { type: 'Attack' | 'Defend' | 'Debuff', damage: number, slam?: boolean };
 
     onStateChanged: () => void = () => {};
 
@@ -134,14 +134,54 @@ export class CombatState {
         return { ...action, actualDamage };
     }
 
+    turnCount = 0;
+
     generateNextEnemyAction() {
-        const r = Math.random();
-        if (r < 0.45) {
+        this.turnCount++;
+        const hpPct = this.enemy.hp / this.enemy.maxHp;
+        const playerLow = this.player.hp < this.player.maxHp * 0.35;
+        const playerVulnerable = this.player.vulnerable > 0;
+        const enemyHurt = hpPct < 0.5;
+        const playerBlocked = this.player.block >= 10;
+
+        // Every 3rd turn: teleport slam
+        if (this.turnCount % 3 === 0) {
+            this.nextEnemyAction = { type: 'Attack', damage: Math.floor(Math.random() * 4) + 14, slam: true };
+            return;
+        }
+
+        // Finish off low-HP player
+        if (playerLow) {
             this.nextEnemyAction = { type: 'Attack', damage: Math.floor(Math.random() * 6) + 10 };
-        } else if (r < 0.75) {
-            this.nextEnemyAction = { type: 'Defend', damage: 0 };
-        } else {
+            return;
+        }
+
+        // Exploit vulnerability with a strong hit
+        if (playerVulnerable) {
+            this.nextEnemyAction = { type: 'Attack', damage: Math.floor(Math.random() * 4) + 12 };
+            return;
+        }
+
+        // If player has high block, debuff instead of wasting an attack
+        if (playerBlocked && Math.random() < 0.6) {
             this.nextEnemyAction = { type: 'Debuff', damage: 0 };
+            return;
+        }
+
+        // Defend when hurt and not already blocked
+        if (enemyHurt && this.enemy.block < 10 && Math.random() < 0.5) {
+            this.nextEnemyAction = { type: 'Defend', damage: 0 };
+            return;
+        }
+
+        // Default: weighted random favoring attacks
+        const r = Math.random();
+        if (r < 0.6) {
+            this.nextEnemyAction = { type: 'Attack', damage: Math.floor(Math.random() * 6) + 10 };
+        } else if (r < 0.8) {
+            this.nextEnemyAction = { type: 'Debuff', damage: 0 };
+        } else {
+            this.nextEnemyAction = { type: 'Defend', damage: 0 };
         }
     }
 
@@ -149,7 +189,8 @@ export class CombatState {
         const action = this.nextEnemyAction;
         if (action.type === 'Attack') {
             const displayDmg = this.player.calculateDamage(action.damage, this.enemy);
-            return { text: `⚔️ ${displayDmg}`, color: '#ff7675' };
+            const icon = action.slam ? '⚡' : '⚔️';
+            return { text: `${icon} ${displayDmg}`, color: action.slam ? '#fdcb6e' : '#ff7675' };
         } else if (action.type === 'Defend') {
             return { text: '🛡️', color: '#74b9ff' };
         } else {

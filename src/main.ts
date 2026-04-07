@@ -249,7 +249,11 @@ class BootScene extends Phaser.Scene {
     preload() {
         this.load.image('bg', 'assets/bg.png');
         this.load.image('player', 'assets/player.png');
-        this.load.image('enemy', 'assets/enemy.png');
+        this.load.spritesheet('droid_idle', 'assets/droid_idle.png', { frameWidth: 57, frameHeight: 55 });
+        this.load.spritesheet('droid_attack', 'assets/droid_attack.png', { frameWidth: 124, frameHeight: 55 });
+        this.load.spritesheet('droid_hit', 'assets/droid_hit.png', { frameWidth: 57, frameHeight: 55 });
+        this.load.spritesheet('droid_run', 'assets/droid_run.png', { frameWidth: 57, frameHeight: 55 });
+        this.load.spritesheet('droid_slam', 'assets/droid_slam.png', { frameWidth: 142, frameHeight: 107 });
         this.load.image('card_strike', 'assets/card_strike.png');
         this.load.image('card_defend', 'assets/card_defend.png');
         this.load.image('card_ripAndTear', 'assets/card_ripAndTear.png');
@@ -289,6 +293,14 @@ class BootScene extends Phaser.Scene {
         this.anims.create({ key: 'hero-run', frames: this.anims.generateFrameNumbers('hero_run', { start: 0, end: 24 }), frameRate: 16, repeat: -1 });
         this.anims.create({ key: 'hit-fx-01', frames: this.anims.generateFrameNumbers('hit_fx_01', { start: 0, end: 4 }), frameRate: 15, repeat: 0 });
         this.anims.create({ key: 'hit-fx-02', frames: this.anims.generateFrameNumbers('hit_fx_02', { start: 0, end: 4 }), frameRate: 15, repeat: 0 });
+
+        this.anims.create({ key: 'droid-idle', frames: this.anims.generateFrameNumbers('droid_idle', { start: 0, end: 6 }), frameRate: 8, repeat: -1 });
+        this.anims.create({ key: 'droid-attack1', frames: this.anims.generateFrameNumbers('droid_attack', { start: 0, end: 9 }), frameRate: 18, repeat: 0 });
+        this.anims.create({ key: 'droid-attack2', frames: this.anims.generateFrameNumbers('droid_attack', { start: 10, end: 18 }), frameRate: 18, repeat: 0 });
+        this.anims.create({ key: 'droid-hit', frames: this.anims.generateFrameNumbers('droid_hit', { start: 0, end: 2 }), frameRate: 12, repeat: 0 });
+        this.anims.create({ key: 'droid-death', frames: this.anims.generateFrameNumbers('droid_hit', { start: 0, end: 7 }), frameRate: 10, repeat: 0 });
+        this.anims.create({ key: 'droid-run', frames: this.anims.generateFrameNumbers('droid_run', { start: 1, end: 8 }), frameRate: 14, repeat: -1 });
+        this.anims.create({ key: 'droid-slam', frames: this.anims.generateFrameNumbers('droid_slam', { start: 0, end: 8 }), frameRate: 14, repeat: 0 });
 
         this.scene.start('CombatScene');
     }
@@ -371,8 +383,8 @@ class CombatScene extends Phaser.Scene {
         this.playerSprite = this.add.sprite(300, 510, 'hero_idle').setOrigin(0.5, 1).setScale(4).setInteractive();
         this.playerSprite.setFlipX(true);
         this.playerSprite.play('hero-idle');
-        this.enemySprite = this.add.sprite(950, 480, 'enemy').setOrigin(0.5, 1).setScale(0.35).setInteractive();
-        this.enemySprite.setFlipX(true);
+        this.enemySprite = this.add.sprite(950, 480, 'droid_idle').setOrigin(0.5, 1).setScale(6).setFlipX(true).setInteractive();
+        this.enemySprite.play('droid-idle');
         (this.playerSprite as any).baseX = 300;
         (this.enemySprite as any).baseX = 950;
 
@@ -420,15 +432,15 @@ class CombatScene extends Phaser.Scene {
                 );
                 if (isTargeting) {
                     this.enemySprite.setTint(0xff4444);
-                    this.enemySprite.setScale(0.37);
+                    this.enemySprite.setScale(6.3);
                 } else {
                     this.enemySprite.clearTint();
-                    this.enemySprite.setScale(0.35);
+                    this.enemySprite.setScale(6);
                 }
             } else {
                 this.targetArrow.clear();
                 this.enemySprite.clearTint();
-                this.enemySprite.setScale(0.35);
+                this.enemySprite.setScale(6);
                 gameObject.x = dragX;
                 gameObject.y = dragY;
                 gameObject.rotation = 0;
@@ -440,7 +452,7 @@ class CombatScene extends Phaser.Scene {
             (gameObject as any).isDragging = false;
             this.targetArrow.clear();
             this.enemySprite.clearTint();
-            this.enemySprite.setScale(0.35);
+            this.enemySprite.setScale(6);
             gameObject.glowGraphic.setAlpha(0);
             gameObject.trailEmitter.stop();
 
@@ -574,7 +586,11 @@ class CombatScene extends Phaser.Scene {
 
                 this.time.delayedCall(1200, () => {
                     const action = this.state.executeEnemyAction();
-                    if (action.type === 'Attack') {
+                    if (action.type === 'Attack' && action.slam) {
+                        this.execSlamAttack(action.actualDamage, () => {
+                            this.time.delayedCall(600, () => this.startPlayerTurnAnim());
+                        });
+                    } else if (action.type === 'Attack') {
                         this.execAttacks(this.enemySprite, this.playerSprite, -1, [action.actualDamage], () => {
                             this.time.delayedCall(600, () => this.startPlayerTurnAnim());
                         });
@@ -663,12 +679,21 @@ class CombatScene extends Phaser.Scene {
 
         if (this.state.currentPhase === TurnPhase.GAME_OVER && !this.gameOverShown) {
             this.gameOverShown = true;
-            const msg = this.state.player.hp <= 0 ? 'YOU DIED' : 'VICTORY';
-            const color = this.state.player.hp <= 0 ? '#ff7675' : '#ffd700';
+            const playerWon = this.state.enemy.hp <= 0;
+            const msg = playerWon ? 'VICTORY' : 'YOU DIED';
+            const color = playerWon ? '#ffd700' : '#ff7675';
+
+            if (playerWon) {
+                this.enemySprite.play('droid-death');
+                this.tweens.add({ targets: this.enemySprite, alpha: 0, duration: 800, delay: 400 });
+            }
+
             const t = this.add.text(640, 360, msg, {
                 fontSize: '100px', color: color, fontStyle: 'bold', stroke: '#000', strokeThickness: 12
-            }).setOrigin(0.5).setDepth(1000);
-            this.tweens.add({ targets: t, scale: 1.05, duration: 800, yoyo: true, repeat: -1 });
+            }).setOrigin(0.5).setDepth(1000).setAlpha(0);
+            this.tweens.add({ targets: t, alpha: 1, duration: 300, delay: playerWon ? 600 : 0, onComplete: () => {
+                this.tweens.add({ targets: t, scale: 1.05, duration: 800, yoyo: true, repeat: -1 });
+            }});
             this.endTurnBtn.setVisible(false);
         } else {
             this.endTurnBtn.setVisible(this.state.currentPhase === TurnPhase.PLAYER_ACTION);
@@ -831,7 +856,8 @@ class CombatScene extends Phaser.Scene {
         if (damages.length === 2) { atkAnimKey = 'hero-atk2'; atkTexture = 'hero_atk2'; }
         if (damages.length >= 3) { atkAnimKey = 'hero-atk3'; atkTexture = 'hero_atk3'; }
 
-        // Run toward the enemy — tween the idle sprite (keeps consistent frame size)
+        // Run toward the target
+        if (!isPlayer) attacker.play('droid-run');
         this.tweens.add({
             targets: attacker,
             x: approachX,
@@ -845,6 +871,8 @@ class CombatScene extends Phaser.Scene {
                         .setOrigin(0.5, 1).setScale(4).setFlipX(true)
                         .setDepth(attacker.depth + 1);
                     actionSprite.play(atkAnimKey);
+                } else {
+                    attacker.play(Math.random() < 0.5 ? 'droid-attack1' : 'droid-attack2');
                 }
 
                 let delay = 0;
@@ -870,6 +898,7 @@ class CombatScene extends Phaser.Scene {
                                                 // Clean up action sprite, walk back with idle sprite
                                                 if (actionSprite) actionSprite.destroy();
                                                 attacker.setVisible(true);
+                                                if (!isPlayer) attacker.play('droid-idle');
                                                 this.tweens.add({
                                                     targets: attacker,
                                                     x: startX,
@@ -889,11 +918,44 @@ class CombatScene extends Phaser.Scene {
         });
     }
 
+    execSlamAttack(damage: number, onDone: () => void) {
+        const enemyBaseX = (this.enemySprite as any).baseX;
+
+        // Enemy vanishes
+        this.enemySprite.setAlpha(0);
+
+        // Spawn slam overlay above the player
+        const slam = this.add.sprite(this.playerSprite.x, this.playerSprite.y - 100, 'droid_slam')
+            .setOrigin(0.5, 1).setScale(6).setFlipX(true).setDepth(500);
+        slam.play('droid-slam');
+
+        // Hit lands mid-animation
+        this.time.delayedCall(400, () => {
+            this.cameras.main.shake(250, 0.03);
+            this.animateHit(this.playerSprite, damage);
+            this.spawnHitFx(this.playerSprite.x, this.playerSprite.y - 80);
+        });
+
+        slam.once('animationcomplete', () => {
+            slam.destroy();
+            // Enemy reappears at base position
+            this.enemySprite.setAlpha(1);
+            this.enemySprite.play('droid-idle');
+            onDone();
+        });
+    }
+
     animateHit(target: Phaser.GameObjects.Sprite, damage: number) {
         this.cameras.main.shake(120, 0.012);
         target.setTintFill(0xffffff);
         this.time.delayedCall(50, () => target.setTint(0xff4444));
-        this.time.delayedCall(150, () => target.clearTint());
+        this.time.delayedCall(150, () => {
+            target.clearTint();
+            if (target === this.enemySprite) {
+                target.play('droid-hit');
+                target.once('animationcomplete', () => target.play('droid-idle'));
+            }
+        });
 
         const baseX = (target as any).baseX;
         target.x = baseX + (target === this.playerSprite ? -20 : 20);
@@ -987,6 +1049,7 @@ const config: Phaser.Types.Core.GameConfig = {
     width: 1280,
     height: 720,
     parent: 'game-container',
+    pixelArt: true,
     preserveDrawingBuffer: true,
     scene: [BootScene, CombatScene],
     scale: {
