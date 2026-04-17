@@ -3,3 +3,4 @@ dist
 *.png
 !public/assets/*.png
 .vercel
+.superpowers/
