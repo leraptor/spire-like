@@ -1,7 +1,7 @@
 // ABOUTME: Phaser scene layer for the spire-like card combat game.
 // ABOUTME: Renders cards, characters, health bars, status effects, targeting, and combat animations.
 
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { CombatState, TurnPhase } from './models/CombatState';
 import { CombatEntity } from './models/CombatEntity';
 import type { Card } from './models/Card';
@@ -1018,8 +1018,8 @@ class CombatScene extends Phaser.Scene {
     animateHit(target: Phaser.GameObjects.Sprite, damage: number) {
         this.cameras.main.shake(120, 0.012);
         this.playRandomSfx(['sfx_hit_heavy', 'sfx_hit_heavy2'], 0.6);
-        target.setTintFill(0xffffff);
-        this.time.delayedCall(50, () => target.setTint(0xff4444));
+        target.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+        this.time.delayedCall(50, () => target.setTint(0xff4444).setTintMode(Phaser.TintModes.MULTIPLY));
         this.time.delayedCall(150, () => {
             target.clearTint();
             if (target === this.enemySprite) {
