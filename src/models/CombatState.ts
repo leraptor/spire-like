@@ -1,10 +1,11 @@
 // ABOUTME: Orchestrates combat flow: turn phases, card resolution, and enemy AI.
-// ABOUTME: Handles multi-hit attacks, status effects, exhaust, and 3 enemy action types.
+// ABOUTME: Handles multi-hit attacks, status effects, exhaust, and 4 enemy action types.
 
 import { Deck } from './Deck';
 import { CombatEntity } from './CombatEntity';
 import type { Card } from './Card';
 import { STARTER_CARDS, TargetType } from './Card';
+import { BEHAVIORS } from '../content/behaviors';
 
 export enum TurnPhase {
     PLAYER_START = 'PlayerStart',
@@ -20,9 +21,15 @@ export class CombatState {
     deck: Deck;
     currentPhase: TurnPhase;
 
-    nextEnemyAction!: { type: 'Attack' | 'Defend' | 'Debuff', damage: number, slam?: boolean };
+    nextEnemyAction!: {
+        type: 'Attack' | 'Defend' | 'Debuff' | 'Charge',
+        damage: number,
+        slam?: boolean,
+        strengthGain?: number,
+    };
 
     onStateChanged: () => void = () => {};
+    behaviorId: string = 'boss_phases';
 
     constructor() {
         this.player = new CombatEntity(true, 75, 3);
@@ -65,12 +72,16 @@ export class CombatState {
 
         const card = this.deck.hand.find(c => c.id === cardId);
         if (!card || this.player.energy < card.cost) return { success: false, damages: [] };
+        if (card.unplayable) return { success: false, damages: [] };
 
         this.player.energy -= card.cost;
         this.deck.removeCard(card.id, card.exhaust);
 
         const damages: number[] = [];
 
+        if (card.effect.selfDamage) {
+            this.player.hp = Math.max(0, this.player.hp - card.effect.selfDamage);
+        }
         if (card.effect.block) this.player.addBlock(card.effect.block);
         if (card.effect.strength) this.player.strength += card.effect.strength;
         if (card.effect.draw) this.deck.draw(card.effect.draw);
@@ -100,6 +111,18 @@ export class CombatState {
     }
 
     endPlayerTurn() {
+        // Exotic card engine: process end-of-turn flags for cards still in hand.
+        const handSnapshot = [...this.deck.hand];
+        for (const c of handSnapshot) {
+            if (c.effect.onTurnEndSelf) {
+                this.player.hp = Math.max(0, this.player.hp - c.effect.onTurnEndSelf);
+            }
+            if (c.ethereal) {
+                this.deck.exhaustPile.push(c);
+                this.deck.hand = this.deck.hand.filter(h => h.id !== c.id);
+            }
+        }
+
         if (this.currentPhase !== TurnPhase.PLAYER_ACTION) return;
         this.deck.discardHand();
         this.player.endTurn();
@@ -122,6 +145,8 @@ export class CombatState {
             this.player.takeDamage(actualDamage);
         } else if (action.type === 'Defend') {
             this.enemy.addBlock(15);
+        } else if (action.type === 'Charge') {
+            this.enemy.strength += action.strengthGain ?? 0;
         } else {
             this.player.vulnerable += 2;
         }
@@ -138,51 +163,12 @@ export class CombatState {
 
     generateNextEnemyAction() {
         this.turnCount++;
-        const hpPct = this.enemy.hp / this.enemy.maxHp;
-        const playerLow = this.player.hp < this.player.maxHp * 0.35;
-        const playerVulnerable = this.player.vulnerable > 0;
-        const enemyHurt = hpPct < 0.5;
-        const playerBlocked = this.player.block >= 10;
-
-        // Every 3rd turn: teleport slam
-        if (this.turnCount % 3 === 0) {
-            this.nextEnemyAction = { type: 'Attack', damage: Math.floor(Math.random() * 4) + 14, slam: true };
-            return;
-        }
-
-        // Finish off low-HP player
-        if (playerLow) {
-            this.nextEnemyAction = { type: 'Attack', damage: Math.floor(Math.random() * 6) + 10 };
-            return;
-        }
-
-        // Exploit vulnerability with a strong hit
-        if (playerVulnerable) {
-            this.nextEnemyAction = { type: 'Attack', damage: Math.floor(Math.random() * 4) + 12 };
-            return;
-        }
-
-        // If player has high block, debuff instead of wasting an attack
-        if (playerBlocked && Math.random() < 0.6) {
-            this.nextEnemyAction = { type: 'Debuff', damage: 0 };
-            return;
-        }
-
-        // Defend when hurt and not already blocked
-        if (enemyHurt && this.enemy.block < 10 && Math.random() < 0.5) {
-            this.nextEnemyAction = { type: 'Defend', damage: 0 };
-            return;
-        }
-
-        // Default: weighted random favoring attacks
-        const r = Math.random();
-        if (r < 0.6) {
-            this.nextEnemyAction = { type: 'Attack', damage: Math.floor(Math.random() * 6) + 10 };
-        } else if (r < 0.8) {
-            this.nextEnemyAction = { type: 'Debuff', damage: 0 };
-        } else {
-            this.nextEnemyAction = { type: 'Defend', damage: 0 };
-        }
+        const behavior = BEHAVIORS[this.behaviorId] ?? BEHAVIORS.boss_phases!;
+        this.nextEnemyAction = behavior({
+            enemy: this.enemy,
+            player: this.player,
+            turnCount: this.turnCount,
+        });
     }
 
     getEnemyIntentDisplay(): { text: string, color: string } {
@@ -193,6 +179,8 @@ export class CombatState {
             return { text: `${icon} ${displayDmg}`, color: action.slam ? '#fdcb6e' : '#ff7675' };
         } else if (action.type === 'Defend') {
             return { text: '🛡️', color: '#74b9ff' };
+        } else if (action.type === 'Charge') {
+            return { text: '⚡ Charging', color: '#fdcb6e' };
         } else {
             return { text: '💔', color: '#a29bfe' };
         }

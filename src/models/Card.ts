@@ -21,6 +21,8 @@ export interface CardEffect {
     vulnerable?: number;
     weak?: number;
     draw?: number;
+    selfDamage?: number;
+    onTurnEndSelf?: number;
 }
 
 export interface Card {
@@ -32,6 +34,8 @@ export interface Card {
     description: string;
     effect: CardEffect;
     exhaust?: boolean;
+    ethereal?: boolean;
+    unplayable?: boolean;
 }
 
 export const STARTER_CARDS: Record<string, Card> = {

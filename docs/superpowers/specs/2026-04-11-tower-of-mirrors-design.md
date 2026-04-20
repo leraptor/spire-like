@@ -56,11 +56,11 @@ The tower has 4 regions stacked vertically, each with 5 floors. Total: 20 floors
 ### Run Initialization
 
 When the player starts a new run in a region:
-1. The player's banked AMS (from the longevity app) is converted to starting gold (1 AMS = 1 gold). The AMS bank is zeroed out.
+1. The player chooses how much AMS to invest (25/50/75/100, capped at 100 and limited by bank balance). The chosen amount converts to starting gold (1 AMS = 1 gold). Only the invested portion is deducted from the bank; the remainder stays banked for future runs.
 2. Seed Card power levels are snapshotted from the player's current habit streaks in the longevity app. These levels are locked for the duration of the run.
-3. The starting deck is assembled: 12 base cards + any unlocked Seed Cards.
+3. The starting deck is assembled: 10 cards (base starters with any unlocked Seed Cards replacing their corresponding starters).
 4. Player HP is set to their max HP (75 base + any star-purchased upgrades).
-5. Player energy is set to their base (3 + any star-purchased upgrades).
+5. Player energy is set to 3 (fixed — no permanent energy upgrades exist).
 6. Potion slots are empty (3 base + any star-purchased upgrades).
 7. Gold is set to the converted AMS amount + any starting gold bonus from star upgrades.
 8. A fresh branching map is procedurally generated for the region.
@@ -80,17 +80,28 @@ When the player starts a new run in a region:
 - **Seed Cards:** Unlock new Seed Cards (one per habit category). Costs vary: 30-80 stars per card.
 - **Character upgrades:**
   - Max HP +5 (costs 30 ★, repeatable 3 times: 75→80→85→90)
-  - Starting Energy +1 (costs 100 ★, one-time: 3→4)
+  - Card Reward +1 (costs 80 ★, one-time: see 4 card options at rewards instead of 3 — better draft quality without warping combat math)
   - Potion Slot +1 (costs 60 ★, one-time: 3→4)
   - Starting Gold Bonus +10 (costs 40 ★, repeatable 3 times: +0→+10→+20→+30)
+  - Note: a permanent energy upgrade (+1 energy per turn) is deliberately excluded. A 33% energy increase would require balancing all future regions for two different energy levels. The Ember Seed relic provides a first-turn energy boost as a run-specific reward instead.
 
 ### AMS — Age Minutes Saved (Run Currency)
 
 **Earning:** AMS is earned daily in the longevity app by completing healthy habits. Each habit has an `amsBase` value (2-23 AMS depending on the habit's impact and evidence grade). AMS accumulates in a bank over days/weeks.
 
-**Spending:** When the player starts a new run, their entire AMS bank is converted to starting gold (1 AMS = 1 gold). The bank is zeroed. Gold is spent at in-run shops to buy cards, relics, potions, and card removal during the run.
+**Spending:** At run start, the player **chooses how much AMS to invest** in the run. A simple selection screen presents preset options:
 
-**On death:** Unspent gold is lost. The AMS bank is already zeroed (it was converted at run start). The player needs to return to the longevity app and do more habits to earn more AMS for their next run.
+```
+"How much to invest in this run?"
+[25 AMS]  [50 AMS]  [75 AMS]  [100 AMS]
+         Bank: 340 AMS remaining
+```
+
+The chosen amount converts to starting gold (1 AMS = 1 gold), capped at 100 per run. The deducted AMS is removed from the bank; the remainder stays safely banked for future runs. Gold is spent at in-run shops to buy cards, relics, potions, and card removal during the run.
+
+This gives the player agency over their own risk. A cautious player can do low-stakes 25g runs while saving up. A confident player can go all-in at 100g. The cap prevents trivialization (can't dump 500 AMS into one run), and the choice prevents devastating loss (the player decided how much to risk).
+
+**On death:** All gold (spent and unspent) is lost. Only the invested portion of AMS was consumed — the rest remains banked. A player who invested 50 AMS and dies with 20 unspent gold loses all 50 AMS worth of gold. This makes the investment choice meaningful.
 
 **The loop:**
 ```
@@ -124,7 +135,7 @@ users/{userId}/
 │   ├── unlockedSeedCards: string[] # e.g. ['sunstride', 'still-waters']
 │   ├── upgrades: {
 │   │   maxHpBonus: number          # 0, 5, 10, or 15
-│   │   energyBonus: number         # 0 or 1
+│   │   cardRewardBonus: number     # 0 or 1 (see 4 card options instead of 3)
 │   │   potionSlotBonus: number     # 0 or 1
 │   │   startingGoldBonus: number   # 0, 10, 20, or 30
 │   │ }
@@ -216,7 +227,7 @@ Each maps to one of the longevity app's habit categories.
 - Cost: 2 energy
 - Base effect (no streak): Gain 2 Strength. Exhaust.
 - 7-day streak: Gain 3 Strength. Exhaust.
-- 30-day streak: Gain 3 Strength. Retain (does NOT exhaust — stays in deck).
+- 30-day streak: Cost reduced to 1 energy. Gain 3 Strength. Exhaust. Innate (always starts in your opening hand). A guaranteed, cheap Turn-1 Strength buff is a massive power spike without the game-breaking infinite scaling of a non-exhausting Strength card.
 - Linked habits: Protein Meal, supplements, hydration, diet-tagged habits
 
 **Inner Light (Maintenance category)**
@@ -233,13 +244,23 @@ Each maps to one of the longevity app's habit categories.
 - A "streak" for a category = consecutive days where at least one habit in that category was completed.
 - At run start, the game snapshots each category's current streak from Firestore.
 - Seed Card power level is locked for the duration of the run (no mid-run changes if your streak breaks or extends).
-- If your streak breaks in real life, the card powers down on your next run. This is a natural consequence, not punishment messaging.
 
 ### Streak Tier Thresholds
 
 - **Base tier:** 0-6 days streak (or Seed Card just unlocked)
 - **Tier 2:** 7-29 days streak
 - **Tier 3:** 30+ days streak
+
+### Wilting Grace Period
+
+Missing a day does NOT immediately break a streak. Instead, Seed Cards use a forgiving "wilting" system designed for a health app audience (people get sick, travel, have bad days):
+
+- **Miss 1 day:** The Seed Card enters a "Wilting" state. Visual change only (glowing particles fade, leaves look dry). No mechanical change — the streak tier is preserved. If the player resumes the habit the next day, the card blooms back to full health and the streak continues unbroken.
+- **Miss 2 consecutive days:** Still wilting. Still no tier drop. The visual wilting intensifies slightly.
+- **Miss 3 consecutive days:** The Seed Card drops ONE tier (not to base — just one step down). A Tier 3 card drops to Tier 2. A Tier 2 card drops to Tier 1/base. The streak counter resets.
+- **Resuming after a drop:** The streak begins counting again from 0. The player needs to rebuild to the next tier threshold (7 or 30 days).
+
+This grace period prevents the Duolingo-style streak anxiety that drives users away from habit apps. A health app that mechanically punishes users for getting the flu is counterproductive. The wilting visual is a gentle nudge, not a slap.
 
 ### Unlocking Seed Cards
 
@@ -249,7 +270,8 @@ Each maps to one of the longevity app's habit categories.
   - Still Waters: 30 ★
   - Root Feast: 50 ★
   - Inner Light: 50 ★
-- The game is playable without any Seed Cards (the base 12-card starter deck works). Seed Cards are a meaningful advantage, not a requirement.
+- **Seed Cards replace starter cards, not add to them.** When a player unlocks Sunstride, it permanently replaces one Strike in the starter deck. When they unlock Still Waters, it replaces a Defend. Root Feast replaces a Strike. Inner Light replaces a Defend. The deck size stays at 10 — quality improves without diluting draw consistency.
+- The game is playable without any Seed Cards (the base 10-card starter deck works). Seed Cards are a meaningful upgrade, not a requirement.
 - Recommended unlock order (by value): Sunstride or Still Waters first (cheap, immediately useful), then Root Feast or Inner Light (more expensive, more powerful).
 
 ### Visual Identity
@@ -260,6 +282,136 @@ Each maps to one of the longevity app's habit categories.
 - Tier 3: lush, flowering vines with glowing particles.
 - This is visually distinct from regular cards, which have a parchment/wood border.
 - When a Seed Card is played in combat, vine tendrils briefly extend from the card before retracting (0.5s animation).
+
+---
+
+## Content Unlock System
+
+### Overview
+
+The game uses a progressive unlock system inspired by Slay the Spire's ascension model. Not all content is available from the first run. As the player progresses through the game AND the longevity app, new cards, relics, potions, and events are unlocked and added to the regional pools. This means each run draws from an ever-expanding set of possibilities.
+
+This serves three purposes:
+1. **New players aren't overwhelmed.** A first run offers a small, learnable set of cards and relics. Decision-making is simpler.
+2. **Veterans keep discovering.** A player on their 20th run is still encountering new cards and relics they haven't seen before.
+3. **The health app has infinite hooks.** Every longevity milestone can unlock something new in the game world, giving the health app a continuous stream of meaningful rewards.
+
+### Starting Pool vs. Unlockable Content
+
+**Starting pool (~60% of Region 1 content):** Available from the very first run. Primarily common and uncommon items that teach core mechanics.
+
+**Unlockable content (~40% of Region 1 content):** Rare and legendary items that get added to the pool over time. Once unlocked, they have a *chance* to appear in future runs as card rewards, shop items, or event discoveries. Unlocking an item doesn't give it to you — it makes it *possible* to encounter.
+
+**Region 1 starting pool:**
+
+*Cards (available from run 1):*
+- All starter cards (Strike, Defend, Mega, Flow)
+- Vine Lash, Bark Skin, Shed (common cards)
+- Thorn Burst, Mist Veil (uncommon cards)
+
+*Cards (unlockable):*
+- Reclaim, Dig In (uncommon — unlocked via game achievements)
+- Empower, Shockwave (uncommon — unlocked via game achievements)
+- Overgrowth, Photosynthesis (rare — unlocked via longevity app milestones or boss victories)
+
+*Relics (available from run 1):*
+- Wilted Crown, Morning Dew, Mossy Compass, Ember Seed (common relics)
+
+*Relics (unlockable):*
+- Root Charm, Thorn Ring (uncommon — unlocked via game/app achievements)
+- Faded Lens, Garden Key (rare — unlocked via boss victories or significant longevity milestones)
+
+*Potions (available from run 1):*
+- Healing Salve, Thorn Tonic, Swift Sip
+
+*Potions (unlockable):*
+- Fury Drop, Fog Flask (unlocked via game/app achievements)
+
+*Events (available from run 1):*
+- The Dried Fountain, The Overgrown Path, The Whispering Stump
+
+*Events (unlockable):*
+- The Sleeping Fox, The Cracked Mirror (unlocked via game achievements)
+- Additional surprise events (unlocked via longevity milestones)
+
+### First Run: The Spirit Encounter
+
+The very first run has a special scripted event on floor 1: a spirit appears and grants the player one powerful card or ability. This hooks the player immediately by showing them what's possible, and gives them a taste of the game's full potential.
+
+The spirit offers a choice of 2 cards from the unlockable rare pool (e.g., Overgrowth or Photosynthesis). This card is available for the duration of the first run only — it's a preview. To permanently add it to the pool, the player must earn the unlock through gameplay or the longevity app.
+
+### Unlock Sources
+
+**From playing the game (explicit, permanent):**
+
+| Achievement | Unlock |
+|-------------|--------|
+| Win your first combat | Empower card added to pool |
+| Reach floor 3 | Shockwave card added to pool |
+| Defeat the Elite (Rot Golem) | Root Charm relic added to pool |
+| Defeat the Boss (Hollow Gardener) | Faded Lens relic + Overgrowth card added to pool |
+| Win a run with ≤ 12 cards in deck | Garden Key relic added to pool |
+| Win a run without resting | Dig In card added to pool |
+| Use 5 potions in a single run | Fog Flask potion added to pool |
+| Discover 3 events in a single run | The Cracked Mirror event added to pool |
+
+**From the longevity app (explicit, permanent):**
+
+| Longevity Milestone | Unlock |
+|---------------------|--------|
+| 7-day exercise streak | Reclaim card added to pool |
+| 7-day sleep streak | Mist Veil card added to pool (if not already available) |
+| Reach longevity score 70 | Thorn Ring relic added to pool |
+| Complete first health screening | Fury Drop potion added to pool |
+| 30-day any-category streak | Photosynthesis card added to pool |
+| Complete health profile | The Sleeping Fox event added to pool |
+
+These are examples — the exact mapping can be tuned during playtesting. The principle is: longevity milestones unlock content that thematically connects to the achievement (exercise streak → attack card, sleep streak → defensive card).
+
+### In-Run Discoveries (Temporary)
+
+Separate from permanent unlocks, each run can contain **surprise discoveries** that are only available during that run:
+
+- **Surprise Chests:** A hidden node type that can appear on the map (rare, ~15% chance per run). Contains a random item from a special "discovery pool" that includes items not yet permanently unlocked. If the player finds a powerful card this way, they get to use it for this run — and a tooltip says "Unlock permanently by [achievement description]."
+- **Secret Events:** Rare event variants that only trigger under specific conditions (e.g., entering floor 3 with less than 20 HP triggers a "Mercy of the Garden" event that offers a full heal but removes your best card).
+- **Elite Drops:** Elite victories can occasionally drop a card or relic from the unlockable pool as a one-time discovery, even if the player hasn't permanently unlocked it yet. This serves as a preview/teaser.
+
+These temporary discoveries create moments of delight and also serve as advertisements for the unlock system — "I found this amazing relic in a chest, now I want to permanently unlock it."
+
+### Collection Screen (Future)
+
+A dedicated screen (accessible from the World Map) showing all discoverable content in the game, organized as a collection or "epoch" system:
+
+- **Cards tab:** Grid of all cards. Unlocked = full color with art. Locked = silhouette with unlock condition shown (e.g., "Defeat the Boss" or "7-day exercise streak").
+- **Relics tab:** Same format.
+- **Potions tab:** Same format.
+- **Events tab:** Same format, but event details are hidden until discovered (just shows the event name and unlock condition).
+- **Progress bar:** "42 / 68 items discovered" — overall collection progress.
+- **Filter:** By unlock source (game achievements vs. longevity app milestones).
+
+This screen gives long-term players a clear picture of what's left to discover and what they need to do to find it. It's built later — not required for v1 launch, but the unlock tracking infrastructure should be in the data model from the start.
+
+### Data Model for Unlocks
+
+The `gameProfile` Firestore document tracks unlocks:
+
+```
+users/{userId}/
+├── gameProfile/
+│   ├── ... (existing fields)
+│   ├── unlockedContent: {
+│   │   cards: string[]           # e.g. ['empower', 'reclaim', 'overgrowth']
+│   │   relics: string[]          # e.g. ['root-charm', 'faded-lens']
+│   │   potions: string[]         # e.g. ['fury-drop']
+│   │   events: string[]          # e.g. ['sleeping-fox']
+│   │ }
+│   ├── achievements: {
+│   │   gameAchievements: string[]    # e.g. ['first-combat-win', 'boss-defeated']
+│   │   appMilestones: string[]       # e.g. ['exercise-7-streak', 'score-70']
+│   │ }
+```
+
+When generating card rewards, shop inventories, and event pools during a run, the game filters the full content catalog by `unlockedContent` to determine what can appear. Items not in the unlock list are excluded from pools (except for in-run surprise discoveries).
 
 ---
 
@@ -352,14 +504,15 @@ Example: Player has 2 Strength, plays Strike (6 base damage) against an enemy wi
 
 ### Deck Mechanics
 
-**Starting deck (without Seed Cards) — 12 cards:**
-- 5× Strike (Attack, cost 1): Deal 6 damage to a single enemy
+**Starting deck (without Seed Cards) — 10 cards:**
+- 4× Strike (Attack, cost 1): Deal 6 damage to a single enemy
 - 4× Defend (Skill, cost 1): Gain 5 block
 - 1× Mega (Attack, cost 2): Deal 4 damage × 3 hits to a single enemy
-- 1× Empower (Power, cost 3): Gain +3 Strength. Exhaust.
 - 1× Flow (Skill, cost 0): Draw 2 cards
 
-**Starting deck (with Seed Cards):** 12 base cards + number of unlocked Seed Cards (up to 16 total).
+**Starting deck (with Seed Cards) — still 10 cards.** Each unlocked Seed Card replaces a starter card: Sunstride replaces a Strike, Still Waters replaces a Defend, Root Feast replaces a Strike, Inner Light replaces a Defend. The deck size stays constant — quality improves without diluting draw consistency. With all 4 Seed Cards unlocked, the deck is: 2× Strike, 2× Defend, 1× Mega, 1× Flow, 1× Sunstride, 1× Still Waters, 1× Root Feast, 1× Inner Light.
+
+The smaller 10-card deck is deliberate for the compressed 5-floor run format. With only 2-3 card rewards per run, each drafted card needs to make up a meaningful percentage of the deck. In a 10-card deck, adding 1 card is a 10% change — enough to feel impactful immediately.
 
 **Deck piles:**
 - **Draw pile:** Cards available to draw. When empty, the discard pile is shuffled and becomes the new draw pile.
@@ -462,20 +615,22 @@ Each region has a vertical branching map with 5 rows of nodes connected by paths
 ```
 Floor 5 (top):     [BOSS: The Hollow Gardener]
                     /        |        \
-Floor 4:        [Elite]   [Combat]  [Event]
+Floor 4:        [Shop]   [Rest]    [Shop]
                   |  \     / |  \    / |
-Floor 3:       [Shop]  [Rest]   [Shop]
+Floor 3:       [Elite]  [Combat] [Event]
                   |  \   / |  \   / |
 Floor 2:       [Combat] [Event] [Combat]
                    \      |      /
 Floor 1 (bottom): [Combat]  [Combat]
 ```
 
+The Elite is on floor 3, with a guaranteed recovery opportunity (shop/rest) on floor 4 before the boss. This prevents the "death trap" of entering a boss fight immediately after an HP-taxing elite with no way to heal. It also creates a better narrative arc: learn (floor 1-2) → hard test (floor 3) → prepare (floor 4) → final exam (floor 5).
+
 **Map generation rules:**
 - Floor 1: Always 2 combat nodes (easy intro fights). Positions [0, 1].
 - Floor 2: 2-3 nodes. At least 1 combat node, at least 1 event node. Random fill.
-- Floor 3: 2-3 nodes. Must include at least 1 shop OR rest site (player needs a breather before the hard part). Random fill for remaining slots.
-- Floor 4: 2-3 nodes. Must include exactly 1 elite node. Remaining nodes are combat or event.
+- Floor 3: 2-3 nodes. Must include exactly 1 elite node. Remaining nodes are combat or event.
+- Floor 4: 2-3 nodes. Must include at least 1 shop OR rest site (player recovers before the boss). Random fill for remaining slots.
 - Floor 5: Always exactly 1 boss node at center position. All floor 4 paths converge here.
 - Connections: each node on floor N connects to 1-2 random nodes on floor N+1. Every node must be reachable from at least one node below. Every node must connect to at least one node above. Orphaned nodes get a forced connection added.
 - Node positions: each node has a horizontal position (0, 1, or 2) used for visual layout.
@@ -614,16 +769,23 @@ Floor 1 (bottom): [Combat]  [Combat]
 
 ### Cards
 
-**Existing starter cards (6 types, 12 cards in starting deck):**
+**Existing starter cards (4 types, 10 cards in starting deck):**
 
 | Card | Type | Cost | Effect | Copies in Starter |
 |------|------|------|--------|-------------------|
-| Strike | Attack | 1 | Deal 6 damage to single enemy | 5 |
+| Strike | Attack | 1 | Deal 6 damage to single enemy | 4 |
 | Defend | Skill | 1 | Gain 5 block | 4 |
 | Mega | Attack | 2 | Deal 4 damage × 3 hits to single enemy | 1 |
-| Empower | Power | 3 | Gain +3 Strength. Exhaust. | 1 |
-| Shockwave | Skill | 2 | Apply 2 Vulnerable + 2 Weak to ALL enemies. Exhaust. | 0 (available in card rewards) |
 | Flow | Skill | 0 | Draw 2 cards | 1 |
+
+**Cards available as rewards/shop finds (not in starter deck):**
+
+| Card | Type | Cost | Effect |
+|------|------|------|--------|
+| Empower | Power | 3 | Gain +3 Strength. Exhaust. |
+| Shockwave | Skill | 2 | Apply 2 Vulnerable + 2 Weak to ALL enemies. Exhaust. |
+
+Empower and Shockwave are deliberately excluded from the starter deck. In the compressed 5-floor format, they serve as exciting card rewards or shop finds rather than dead draws in a lean starting hand.
 
 **Region 1 new cards (15 cards, available from card rewards and shops):**
 
@@ -775,7 +937,7 @@ App Launch → Title Screen → World Map
 
 **Layout:**
 - Left panel — Seed Cards: all 4 shown. Unlocked = full color with streak tier. Locked = silhouette with star price.
-- Right panel — Character Upgrades: Max HP +5 (30★, ×3), Starting Energy +1 (100★, ×1), Potion Slot +1 (60★, ×1), Starting Gold +10 (40★, ×3).
+- Right panel — Character Upgrades: Max HP +5 (30★, ×3), Card Reward +1 (80★, ×1), Potion Slot +1 (60★, ×1), Starting Gold +10 (40★, ×3).
 - Top bar: star balance, back button.
 - Purchase interaction: tap item → detail popup → "Buy for X ★" or "Need X more ★" (grayed).
 
@@ -901,7 +1063,7 @@ src/
 ├── data/                      # Static game content definitions
 │   ├── regions/
 │   │   └── witheredGarden.ts # Region 1: enemies, cards, events, relics, boss
-│   ├── starterDeck.ts        # Base 12-card starter deck
+│   ├── starterDeck.ts        # Base 10-card starter deck
 │   └── seedCards.ts          # All 4 Seed Card definitions with streak tiers
 │
 └── main.ts                    # Phaser game config, scene registration, entry

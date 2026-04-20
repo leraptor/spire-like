@@ -2134,7 +2134,7 @@ export class MapScene extends Phaser.Scene {
       else if (id === this.progress.currentNodeId) state = 'current';
       else if (available.includes(id)) state = 'available';
       else state = 'future';
-      view.setState(state);
+      view.setNodeState(state);
     }
     // Path states.
     for (const e of this.map.edges) {

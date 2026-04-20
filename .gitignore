@@ -2,5 +2,19 @@ node_modules
 dist
 *.png
 !public/assets/*.png
+!public/assets/**/*.png
 .vercel
 .superpowers/
+.worktrees/
+
+# Stale tsc emit — build uses tsc --noEmit; Vite handles transpile.
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
+src/**/*.d.ts.map
+tests/**/*.js
+tests/**/*.js.map
+tests/**/*.d.ts
+tests/**/*.d.ts.map
+# Hand-written Vite env types are not generated; keep them tracked.
+!src/vite-env.d.ts
