@@ -36,9 +36,44 @@ export class BlessingScene extends Phaser.Scene {
     this.drawBackdrop();
     this.drawDeity();
     this.drawMistVeil();     // depth plane between deity and camera
+    this.drawSnow();         // full-screen snow shader on top of the scene
     this.drawAtmosphere();
     this.drawHeader();
     this.drawOffers();       // staggered delay so intro lands first
+
+    // A single scroll-unfurl on entry — thematic, already CC0 in the project.
+    this.sound.play('map-scroll-unfurl', { volume: 0.4 });
+  }
+
+  private drawSnow(): void {
+    // Two-layer particle snowfall: distant small flakes (slow, pale) + near larger flakes
+    // (faster, brighter). Gives depth without the shader-port headaches.
+    this.add.particles(0, 0, 'flare', {
+      x: { min: -40, max: 1320 },
+      y: { min: -40, max: 0 },
+      lifespan: 9000,
+      gravityY: 16,
+      speedX: { min: -12, max: -2 },
+      scale: { start: 0.08, end: 0.05 },
+      alpha: { start: 0, end: 0.55, ease: 'Sine.easeInOut' },
+      tint: [0xffffff, 0xe4ecff, 0xd8e0f0],
+      frequency: 90,
+      blendMode: Phaser.BlendModes.ADD,
+    }).setDepth(48);
+
+    this.add.particles(0, 0, 'flare', {
+      x: { min: -40, max: 1320 },
+      y: { min: -40, max: 0 },
+      lifespan: 7000,
+      gravityY: 36,
+      speedX: { min: -30, max: -5 },
+      scale: { start: 0.18, end: 0.1 },
+      alpha: { start: 0, end: 0.85, ease: 'Sine.easeInOut' },
+      tint: 0xffffff,
+      frequency: 180,
+      rotate: { min: 0, max: 360 },
+      blendMode: Phaser.BlendModes.ADD,
+    }).setDepth(50);
   }
 
   private drawMistVeil(): void {
@@ -234,7 +269,7 @@ export class BlessingScene extends Phaser.Scene {
       card.setInteractive({ useHandCursor: true });
       card.on('pointerdown', () => this.pick(b, card));
       card.on('pointerover', () => {
-        this.sound.play('sfx_hover', { volume: 0.25 });
+        this.sound.play('sfx_hover', { volume: 0.3 });
         this.tweens.add({ targets: card, y: targetY - 14, scale: 1.05, duration: 260, ease: 'Back.easeOut' });
       });
       card.on('pointerout', () => {
@@ -249,8 +284,7 @@ export class BlessingScene extends Phaser.Scene {
   }
 
   private pick(blessing: BlessingDef, card: Phaser.GameObjects.Container): void {
-    this.sound.play('sfx_victory', { volume: 0.6 });
-
+    this.sound.play('sfx_victory', { volume: 0.5 });
     // Card pulse.
     this.tweens.add({ targets: card, scale: 1.12, duration: 280, yoyo: true, ease: 'Sine.easeInOut' });
 
