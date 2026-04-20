@@ -17,7 +17,7 @@ export class QaDebugPanel extends Phaser.GameObjects.Container {
   private open = false;
   private runState: RunState;
 
-  constructor(scene: Phaser.Scene, runState: RunState) {
+  constructor(scene: Phaser.Scene, runState: RunState, _closeActiveBodyScene?: () => void) {
     super(scene, 0, 0);
     this.runState = runState;
     this.buildPanel();
@@ -31,39 +31,44 @@ export class QaDebugPanel extends Phaser.GameObjects.Container {
     this.panel.setVisible(this.open);
   }
 
+  isOpen(): boolean { return this.open; }
+
   private hide(): void { this.open = false; this.panel.setVisible(false); }
 
   private buildPanel(): void {
     this.panel = this.scene.add.container(0, 0);
+    this.panel.setScrollFactor(0);
     this.add(this.panel);
 
-    const bg = this.scene.add.rectangle(640, 360, 1280, 720, 0x000000, 0.8);
+    const bg = this.scene.add.rectangle(640, 360, 1280, 720, 0x000000, 0.8).setScrollFactor(0);
     this.panel.add(bg);
 
     const title = this.scene.add.text(640, 40, 'QA Debug Panel', {
       fontSize: '28px', fontStyle: 'bold', color: '#ffd700',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setScrollFactor(0);
     this.panel.add(title);
 
     const hint = this.scene.add.text(640, 72, 'Backtick (`) to close', {
       fontSize: '14px', color: '#c8b688',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setScrollFactor(0);
     this.panel.add(hint);
 
     // Phase jump buttons
     this.panel.add(this.scene.add.text(100, 110, 'Jump to phase:', {
       fontSize: '18px', color: '#efe5cc',
-    }));
+    }).setScrollFactor(0));
     PHASES.forEach((phase, i) => {
       const col = i % 4;
       const row = Math.floor(i / 4);
       const x = 100 + col * 220;
       const y = 150 + row * 50;
       const btn = this.scene.add.rectangle(x + 100, y + 16, 200, 32, 0x3a2418)
-        .setStrokeStyle(2, 0x6b4a2b).setInteractive({ useHandCursor: true });
+        .setStrokeStyle(2, 0x6b4a2b)
+        .setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
       const label = this.scene.add.text(x + 100, y + 16, phase, {
         fontSize: '14px', color: '#efe5cc',
-      }).setOrigin(0.5);
+      }).setOrigin(0.5).setScrollFactor(0);
       btn.on('pointerdown', () => this.jumpToPhase(phase));
       this.panel.add(btn);
       this.panel.add(label);
@@ -72,7 +77,7 @@ export class QaDebugPanel extends Phaser.GameObjects.Container {
     // Utility buttons
     this.panel.add(this.scene.add.text(100, 360, 'Utilities:', {
       fontSize: '18px', color: '#efe5cc',
-    }));
+    }).setScrollFactor(0));
     const utils: Array<[string, () => void]> = [
       ['+500 gold',          () => gainGold(this.runState, 500)],
       ['Add relic',          () => addRelic(this.runState, RELICS[0]!)],
@@ -86,10 +91,12 @@ export class QaDebugPanel extends Phaser.GameObjects.Container {
       const x = 100 + col * 220;
       const y = 400 + row * 50;
       const btn = this.scene.add.rectangle(x + 100, y + 16, 200, 32, 0x6b4a2b)
-        .setStrokeStyle(2, 0xc89b3c).setInteractive({ useHandCursor: true });
+        .setStrokeStyle(2, 0xc89b3c)
+        .setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
       const txt = this.scene.add.text(x + 100, y + 16, label, {
         fontSize: '14px', color: '#efe5cc',
-      }).setOrigin(0.5);
+      }).setOrigin(0.5).setScrollFactor(0);
       btn.on('pointerdown', fn);
       this.panel.add(btn);
       this.panel.add(txt);
@@ -97,10 +104,15 @@ export class QaDebugPanel extends Phaser.GameObjects.Container {
   }
 
   private jumpToPhase(phase: RunPhase): void {
+    // Tear down whatever modal is currently up so the new phase can dispatch cleanly.
+    const scene = this.scene as Phaser.Scene & { closeActiveModal?: () => void };
+    scene.closeActiveModal?.();
+
     const fresh = buildFixture(phase);
-    // Copy fresh into the live runState (keep reference identity).
     Object.assign(this.runState, fresh);
-    setPhase(this.runState, phase);  // triggers onStateChanged
-    this.hide();
+    setPhase(this.runState, phase);
+    // Defer hide so the scene-level pointerdown handler still sees the panel as open
+    // in this same tick (prevents a spurious ink-drop / travel from the button click).
+    this.scene.time.delayedCall(0, () => this.hide());
   }
 }

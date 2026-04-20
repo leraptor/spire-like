@@ -6,6 +6,8 @@ import { witheredGardenBlueprint } from '../map/blueprints';
 import { tutorialMap } from '../fixtures/maps/tutorial-map';
 import { buildFreshRun } from '../run/buildFreshRun';
 import { GOD_RAYS_SHADER_KEY, GOD_RAYS_SHADER_PATH } from '../fx/godRays';
+import { RUN_STATE_CHANGED } from './HudScene';
+import type { RunState } from '../models/RunState';
 
 export class BootScene extends Phaser.Scene {
     constructor() { super('BootScene'); }
@@ -157,13 +159,18 @@ export class BootScene extends Phaser.Scene {
         const seed = seedParam ? Number(seedParam) : (import.meta.env.DEV ? defaultDevSeed : Date.now());
         const epoch = epochParam ? Number(epochParam) : ((this as any).__forceEpoch ?? 1);
 
-        if (mapParam === 'tutorial') {
-            const runState = buildFreshRun({ seed, epoch, blueprint: witheredGardenBlueprint });
-            runState.map = tutorialMap;
-            this.scene.start('BlessingScene', { runState });
-        } else {
-            const runState = buildFreshRun({ seed, epoch, blueprint: witheredGardenBlueprint });
-            this.scene.start('BlessingScene', { runState });
-        }
+        const runState = buildFreshRun({ seed, epoch, blueprint: witheredGardenBlueprint });
+        if (mapParam === 'tutorial') runState.map = tutorialMap;
+        this.wireRunStateEmitter(runState);
+        this.scene.start('BlessingScene', { runState });
+    }
+
+    /**
+     * Wire runState.onStateChanged once at boot so every transition broadcasts over the
+     * Phaser game event bus. HudScene + any future listeners (body scenes) subscribe to
+     * RUN_STATE_CHANGED instead of fighting over the single callback slot.
+     */
+    private wireRunStateEmitter(runState: RunState): void {
+        runState.onStateChanged = (s: RunState) => this.game.events.emit(RUN_STATE_CHANGED, s);
     }
 }

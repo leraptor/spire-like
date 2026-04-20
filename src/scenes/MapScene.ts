@@ -1,26 +1,14 @@
 // ABOUTME: Phaser scene that renders a RegionMap from RunState as a scrollable parchment column.
-// ABOUTME: Coordinates phase transitions, dispatches modals, and handles avatar travel + node-action.
+// ABOUTME: Coordinates phase transitions by launching body scenes (Merchant/Chest/etc.) and handles avatar travel + node-action.
 import * as Phaser from 'phaser';
 import type { RunState } from '../models/RunState';
-import type { RunOutcome } from '../models/RunOutcome';
 import type { MapNode } from '../models/RegionMap';
-import { applyOutcomes } from '../run/applyOutcomes';
-import { setPhase, setCurrentNode, usePotion } from '../run/transitions';
-import { nextUnlockableEpoch } from '../content/epochs';
-import { pickEvent } from '../content/events';
+import { setPhase, setCurrentNode } from '../run/transitions';
 import { NodeView, type NodeViewState } from '../ui/NodeView';
 import { PathRenderer, type EdgeCoords } from '../ui/PathRenderer';
 import { AvatarWalker } from '../ui/AvatarWalker';
-import { MapHud } from '../ui/MapHud';
-import { RestModal } from '../ui/RestModal';
-import { RewardModal } from '../ui/modals/RewardModal';
-import { ChestModal } from '../ui/modals/ChestModal';
-import { MerchantModal } from '../ui/modals/MerchantModal';
-import { EventModal } from '../ui/modals/EventModal';
-import { BossVictoryModal } from '../ui/modals/BossVictoryModal';
-import { DeathModal } from '../ui/modals/DeathModal';
-import { EpochUnlockModal } from '../ui/modals/EpochUnlockModal';
 import { QaDebugPanel } from '../ui/QaDebugPanel';
+import { RUN_STATE_CHANGED } from './HudScene';
 
 const COLUMN_X_MIN = 360;
 const COLUMN_X_MAX = 920;
@@ -37,10 +25,10 @@ export class MapScene extends Phaser.Scene {
   private nodeViews = new Map<string, NodeView>();
   private paths!: PathRenderer;
   private avatar!: AvatarWalker;
-  private hud!: MapHud;
-  private activeModal: Phaser.GameObjects.Container | undefined;
+  private activeBodyScene: string | null = null;
   private isTraveling = false;
   private qaPanel: QaDebugPanel | null = null;
+  private runStateListener: ((s: RunState) => void) | null = null;
 
   private twilightOverlay!: Phaser.GameObjects.Rectangle;
 
@@ -51,7 +39,7 @@ export class MapScene extends Phaser.Scene {
     // Reset transient scene state. Phaser reuses scene instances across scene.start(),
     // so field initializers don't re-run — we must clear them explicitly on every init.
     this.isTraveling = false;
-    this.activeModal = undefined;
+    this.activeBodyScene = null;
     this.nodeViews.clear();
   }
 
@@ -147,9 +135,10 @@ export class MapScene extends Phaser.Scene {
     const startPos = this.avatarRestingPosition();
     this.avatar = new AvatarWalker(this, startPos.x, startPos.y);
 
-    // HUD.
-    this.hud = new MapHud(this, (slot) => this.onPotionUsedFromMap(slot));
-    this.add.existing(this.hud);
+    // HudScene runs in parallel on top; launched here so it's active during MAP + body scenes.
+    if (!this.scene.isActive('HudScene')) {
+      this.scene.launch('HudScene', { runState: this.runState });
+    }
 
     // Mouse-wheel scroll.
     this.input.on('wheel', (_p: Phaser.Input.Pointer, _go: unknown, _dx: number, dy: number) => {
@@ -161,13 +150,13 @@ export class MapScene extends Phaser.Scene {
     let dragStartScroll = 0;
     let isDragging = false;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (this.activeModal) return;
+      if (this.activeBodyScene) return;
       isDragging = false;
       dragStartY = p.y;
       dragStartScroll = this.cameras.main.scrollY;
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!p.isDown || this.activeModal) return;
+      if (!p.isDown || this.activeBodyScene) return;
       const dy = dragStartY - p.y;
       if (!isDragging && Math.abs(dy) > 8) isDragging = true;
       if (isDragging) {
@@ -185,7 +174,8 @@ export class MapScene extends Phaser.Scene {
 
     // Interactive Ink Drops (Procedural Multi-Style Splatters)
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (this.activeModal || this.isTraveling) return;
+      if (this.activeBodyScene || this.isTraveling) return;
+      if (this.qaPanel?.isOpen()) return;
 
       // Robust check: Did we hit a node?
       const nodes = Array.from(this.nodeViews.values());
@@ -216,10 +206,15 @@ export class MapScene extends Phaser.Scene {
     bgm.play();
     this.events.once('shutdown', () => {
       this.sound.stopByKey('map-bgm');
+      if (this.runStateListener) {
+        this.game.events.off(RUN_STATE_CHANGED, this.runStateListener);
+        this.runStateListener = null;
+      }
     });
 
-    // Wire RunState change observer and paint initial state.
-    this.runState.onStateChanged = () => this.onRunStateChanged();
+    // Subscribe to state changes via the game event bus (HudScene and body scenes also listen).
+    this.runStateListener = () => this.onRunStateChanged();
+    this.game.events.on(RUN_STATE_CHANGED, this.runStateListener);
     this.onRunStateChanged();
 
     this.qaPanel = new QaDebugPanel(this, this.runState);
@@ -291,7 +286,7 @@ export class MapScene extends Phaser.Scene {
   }
 
   private onNodeTapped(node: MapNode): void {
-    if (this.activeModal) return;
+    if (this.activeBodyScene) return;
     if (this.isTraveling) return;
     if (this.runState.phase !== 'MAP') return;
     const available = this.availableNextIds();
@@ -358,112 +353,61 @@ export class MapScene extends Phaser.Scene {
       ? node.data.enemyId
       : 'thorn-creep';
     setPhase(this.runState, 'COMBAT');
+    // Combat has its own HUD; stop HudScene before handing off.
+    if (this.scene.isActive('HudScene')) this.scene.stop('HudScene');
     this.scene.start('CombatScene', { runState: this.runState, enemyId, nodeType: node.type });
   }
 
   private onRunStateChanged(): void {
-    this.hud.update(this.runState);
     this.refreshNodeStates();
     this.updateTimeOfDay(this.currentFloor());
 
-    // Phase → modal dispatch (only if no modal is already open for this phase).
-    if (this.activeModal) return;
-    switch (this.runState.phase) {
-      case 'REWARD':
-        this.openModal(new RewardModal(this, this.runState, o => this.resolveAndAdvance(o, 'MAP')));
-        break;
-      case 'CHEST':
-        this.openModal(new ChestModal(this, this.runState, o => this.resolveAndAdvance(o, 'MAP')));
-        break;
-      case 'MERCHANT':
-        this.openModal(new MerchantModal(this, this.runState, o => this.resolveAndAdvance(o, 'MAP')));
-        break;
-      case 'EVENT':
-        this.openEvent();
-        break;
-      case 'REST':
-        this.openRest();
-        break;
-      case 'BOSS_VICTORY':
-        this.openModal(new BossVictoryModal(this, this.runState, () => this.afterRunEnd()));
-        break;
-      case 'DEATH':
-        this.openModal(new DeathModal(this, this.runState, () => this.afterRunEnd()));
-        break;
-      case 'EPOCH_UNLOCK': {
-        const epoch = nextUnlockableEpoch(this.runState);
-        if (!epoch) { setPhase(this.runState, 'MAP'); break; }
-        this.openModal(new EpochUnlockModal(this, this.runState, epoch, () => this.restartInEpoch(epoch.epoch)));
-        break;
-      }
+    // If a body scene is already handling the current phase, don't re-dispatch.
+    if (this.activeBodyScene) return;
+
+    const phase = this.runState.phase;
+    const bodySceneKey: string | null =
+      phase === 'REWARD' ? 'RewardScene' :
+      phase === 'CHEST' ? 'ChestScene' :
+      phase === 'MERCHANT' ? 'MerchantScene' :
+      phase === 'EVENT' ? 'EventScene' :
+      phase === 'REST' ? 'RestScene' :
+      phase === 'BOSS_VICTORY' ? 'BossVictoryScene' :
+      phase === 'DEATH' ? 'DeathScene' :
+      phase === 'EPOCH_UNLOCK' ? 'EpochUnlockScene' :
+      null;
+
+    if (bodySceneKey) {
+      // Terminal scenes hide the persistent HUD.
+      const terminal = phase === 'BOSS_VICTORY' || phase === 'DEATH' || phase === 'EPOCH_UNLOCK';
+      if (terminal && this.scene.isActive('HudScene')) this.scene.stop('HudScene');
+      this.launchBodyScene(bodySceneKey);
     }
   }
 
-  private openModal(modal: Phaser.GameObjects.Container): void {
-    this.activeModal = modal;
-    this.add.existing(modal);
+  private launchBodyScene(key: string): void {
+    this.activeBodyScene = key;
+    this.scene.launch(key, { runState: this.runState });
+    const target = this.scene.get(key);
+    target.events.once('shutdown', () => {
+      // Guard: a QA force-jump can stop one body scene and start another in the same tick.
+      if (this.activeBodyScene !== key) return;
+      this.activeBodyScene = null;
+      // Re-evaluate phase on shutdown — body scene may have set a new phase before exiting
+      // (e.g. MAP after a merchant leave, or EPOCH_UNLOCK after a boss victory).
+      this.onRunStateChanged();
+    });
   }
 
-  private openEvent(): void {
-    // Pick a random event from the Region 1 pool for this visit.
-    const rng = () => Math.random();
-    const ev = pickEvent(rng);
-    this.openModal(new EventModal(this, this.runState, ev, (outcomes) => {
-      const combat = outcomes.find(o => o.kind === 'enter_combat');
-      if (combat) {
-        const combatOutcome = combat as { kind: 'enter_combat'; enemyId: string; returnPhase: string };
-        this.activeModal = undefined;
-        setPhase(this.runState, 'COMBAT');
-        this.scene.start('CombatScene', { runState: this.runState, enemyId: combatOutcome.enemyId, nodeType: 'combat' });
-      } else {
-        this.resolveAndAdvance(outcomes, 'MAP');
-      }
-    }));
-  }
-
-  private openRest(): void {
-    this.openModal(new RestModal(this, this.runState.playerHp, this.runState.playerMaxHp, 0.30, (result) => {
-      this.resolveAndAdvance([{ kind: 'heal', amount: result.healedBy }], 'MAP');
-    }));
-  }
-
-  private resolveAndAdvance(outcomes: RunOutcome[], nextPhase: 'MAP' | 'COMBAT'): void {
-    this.activeModal = undefined;
-    // Set terminal phase first so re-entrant onStateChanged emits during applyOutcomes
-    // don't re-open a modal for the pre-resolve phase (EVENT/REWARD/etc).
-    // If an outcome is enter_combat, applyOutcomes will overwrite to COMBAT anyway.
-    // If it's takeDamage to 0, transitions set phase=DEATH.
-    const hasCombat = outcomes.some(o => o.kind === 'enter_combat');
-    if (!hasCombat) {
-      setPhase(this.runState, nextPhase);
+  /**
+   * Called by QaDebugPanel.jumpToPhase to tear down any live body scene before the
+   * fixture load + phase switch, so the new phase dispatches cleanly.
+   */
+  closeActiveModal(): void {
+    if (this.activeBodyScene) {
+      this.scene.stop(this.activeBodyScene);
+      this.activeBodyScene = null;
     }
-    applyOutcomes(this.runState, outcomes);
-  }
-
-  private onPotionUsedFromMap(slot: number): void {
-    const potion = this.runState.potions[slot];
-    if (!potion || !potion.usableInMap) return;
-    if (potion.effect.kind === 'heal') {
-      applyOutcomes(this.runState, [{ kind: 'heal', amount: potion.effect.amount }]);
-    }
-    usePotion(this.runState, slot);
-  }
-
-  private afterRunEnd(): void {
-    // Check for epoch unlock; if unlocked, transition to EPOCH_UNLOCK so the next render shows the modal.
-    const unlock = nextUnlockableEpoch(this.runState);
-    if (unlock) {
-      this.activeModal = undefined;
-      setPhase(this.runState, 'EPOCH_UNLOCK');
-    } else {
-      this.restartInEpoch(this.runState.currentEpoch);
-    }
-  }
-
-  private restartInEpoch(epoch: number): void {
-    // Rebuild a fresh run in the given epoch and re-enter via BootScene.
-    this.activeModal = undefined;
-    this.scene.start('BootScene', { forceNewRun: true, epoch });
   }
 
   private spawnInkDrop(worldX: number, worldY: number): void {
